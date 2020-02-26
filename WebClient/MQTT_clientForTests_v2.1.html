@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+
+
+	<!-- This doccument must be the same as "MQTT_clientFrontPWG_vx.html" but this
+		 is for local tests only. update both.
+		 Aditionaly, this doesn´t updates to gitHub unless for examples
+		 NOTE. This doc uses tables for containers, in PWG.es uses it´s own system,
+				just don´t copy the tables from here
+		 -->
+
+<html><meta charset="UTF-8">
+    <head>
+	    <title>template</title>
+		<script  type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
+		<script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.2/jquery.min.js"></script>
+		<link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+	
+	
+	
+	<!-- Update to gitHub when is finished -->
+	<style>
+		#webConsole{
+			display:none;
+			position: relative;
+			width:185px;
+			height:auto;
+		}
+
+			#webConsoleTitle span{
+				font-size:10px;
+			}
+			#webConsoleTitle i{
+				font-size:15px;
+			}
+
+		#btnHideWarn{
+			position:absolute;
+			right:5px;
+			top: 5px;
+		}
+
+		#webConsoleContent{
+			background-color: rgba(0,200,20,0.2);
+			border: 1px solid rgba(0,200,20,0.3);
+			box-shadow: 0 0 10px 0 rgba(0,200,20,0.2);
+			border-radius: 8px;
+			padding:3px;
+			width:180px;
+		}
+		
+		#webConsoleControl{
+			display:none;
+		}
+		
+		#consoleOutput{
+			color: firebrick;
+			font-size:15px;
+			opacity:0;
+		}
+			#consoleOutput i{
+				font-size:15px;
+			}
+		
+		#actionImg{
+			cursor:pointer;
+			user-select:none;
+			color:firebrick;
+			font-size:100px;
+		}
+		#webConsoleAutentification{
+			display:none;
+		}
+		
+			#webConsoleProjectList div{
+				color:#1f1f1f;
+				margin:3px;
+				padding-left:6px;
+				background-color: rgba(0,25,180,0.2);
+				box-shadow: 0px 0px 10px 5px rgba(0,0,0,0.1);
+				border-left:5px solid rgba(0,180,25,0.5);
+				cursor:pointer;
+			}
+			#webConsoleProjectList div:hover{
+				background-color: rgba(0,25,180,0.4);
+				color: #e5e5e5;
+			}
+		
+		
+		
+		#webConsoleMessageBox{
+			height: 200px;
+			overflow-y:auto;
+		}
+			#webConsoleMessageBox div{
+				padding:3px; margin:5px;
+				background:rgba(255,255,255,0.2);;
+				font-size:14px;
+				width:80%;
+				margin-right:15%;
+				border-radius:5px;
+			}
+			#webConsoleMessageBox span{
+				color:firebrick;
+				display:block;
+			}
+			#webConsoleMessageInput i{
+				color: rgba(0,25,180,0.4);
+				display:inline-block;
+				cursor:pointer;
+				margin-left:4px;
+			}
+			#webConsoleMessageInput input{
+				border-radius:20px;
+			}
+			#webConsoleMessageInput i:hover{
+				color: rgba(0,25,180,0.7);
+			}
+		
+	</style>
+
+	</head>
+
+	<!-- Body content must be the same as "MQTT_clientFrontPWG_vx.html" update both.
+		 Aditionaly, update to gitHub when is finished -->
+	<body style="background-color:#F5F5F5">
+	
+	
+	<div id="doc-body">
+		<table class="content-body">
+			<tr>
+				<td class="content-right">
+				
+					<div id="webConsole">
+						<div id="webConsoleTitle">
+							<span>Web Client 1.2 by 3Dip.es.tl</span>
+							<span id="btnHideWarn"><input onclick="toggleWarnings()" type="checkbox" checked><i class="material-icons">warning</i></input></span>
+						</div>
+						<div id="webConsoleContent" >
+							<div id="webConsoleProjectList">
+								<div onclick="targetClick('LED');">LED</div>
+								<div onclick="targetClick('Messager');">Messager</div>
+								<div onclick="targetClick('null');">Crane</div>
+							</div>
+							<div id="webConsoleAutentification">
+							<center>
+								<div>This client needs a key to use</div>
+								<input id="usrKey" type="text"></input>
+								<input type="button" value="Submit" onclick="evaluateAutentification();"></input>
+							</center>
+							</div>
+							<div id="webConsoleControl">
+								Loading Target..
+							</div>
+							<div id="consoleOutput">&nbsp; <i class="material-icons">error_outline</i>&nbsp;</div>
+						</div>
+					</div>
+					
+				</td>
+			</tr>
+		</table>
+	</div>
+	
+	
+	<br><br><br><br><br><br>
+	
+	<script>
+	/*projects here*/
+			var target=null;
+	
+			const project_LED = '<i id="actionImg" class="material-icons" onclick="toggleLED()">toggle_off</i>';
+			var LEDon = false;
+
+			const project_Messager = '<div id="webConsoleMessageBox"> </div> <div id="webConsoleMessageInput"><input type="text"></input><i onclick="MessagerSend();" class="material-icons">play_circle_outline</i></div>';
+			var isMessager = false;
+			
+			
+			function toggleLED(){
+				if(LEDon == false){
+					MQTTsend("LEDon -" + usrKey,publishTopic);
+					$("#actionImg").text("toggle_on");
+					$("#actionImg").css("color","lime");
+					LEDon = true;
+				}
+				else{
+					MQTTsend("LEDoff -" + usrKey,publishTopic);
+					$("#actionImg").text("toggle_off");
+					$("#actionImg").css("color","firebrick");
+					LEDon = false;
+				}
+			}
+			
+			function showMessage(msg, incoming=true){
+				let from = activeTarget===null? subscribeTopic : activeTarget;
+				let receivedMessage = '<div><span>'+ from +'</span>'+ msg +'</div>';
+				let	sentMessage = '<div style="background:rgba(0,180,20,0.14); margin-left:15%;"><span>'+ usrKey +'</span>'+ msg +'</div>';
+
+				$("#webConsoleMessageBox").append(incoming===true?receivedMessage:sentMessage);
+				$("#webConsoleMessageBox").scrollTop($("#webConsoleMessageBox")[0].scrollHeight);
+			}
+			
+			function MessagerSend(){
+				var input = $("#webConsoleMessageInput input").val();
+				
+				MQTTsend(input + " -" + usrKey,publishTopic);
+				showMessage(input, false);
+			}
+
+	/*This script is the one uploaded to gitHub "MQTTSSL.js". Update when finished*/
+			var usrKey;
+			var warnings=true;
+			var connectionState=false;
+			var readyToResend = true;
+			var responseTimeout;
+			var activeTarget = null;
+			
+			const serverName = "server";
+			const host = "tailor.cloudmqtt.com";
+			const port = 31345;
+			const userName = "yziinyrs";
+			const userPass = "cgAduprcUNln";
+			const SSL = true;
+			var subscribeTopic;
+			const publishTopic = serverName + "/request";
+			var receivedMessage = "";
+			
+			window.onload = function(){
+				MQTTmake();
+				$("#webConsole").css("display","block");
+			}
+			
+			function targetClick(targetName){
+				switch(targetName){
+					case "LED":
+						$("#webConsoleControl").html(project_LED);
+						target = "LED";
+						break;
+					case "Messager":
+						$("#webConsoleControl").html(project_Messager);
+						target = "Messager";
+						break;
+					case "Crane":
+						$("#webConsoleControl").html(project_Crane);
+						target = "Crane";
+						break;
+					default:
+						sendConsoleMessage("Project not developed yet!");
+				}
+				$("#webConsoleAutentification").show();
+				$("#webConsoleProjectList").hide();
+			}
+			
+			function evaluateAutentification(){
+				if(readyToResend === true){
+					readyToResend = false;
+					usrKey = $("#usrKey").val();
+					subscribeTopic = serverName + "/response/" + usrKey;
+
+					MQTTconnect();
+					
+					responseTimeout = setTimeout(function(){
+						console.log("Server timed out!");
+						sendConsoleMessage("Server timed Out");
+						client.disconnect();
+						readyToResend = true;
+					},6000);
+				}
+			}
+			
+
+			
+			function toggleWarnings(){
+				warnings = !warnings;
+			}
+
+			function MQTTmake() {
+				try{
+					client = new Paho.MQTT.Client(host, port, "Client1D31gR5d3Dip" + Math.random());
+					client.onConnectionLost = onConnectionLost;
+					client.onMessageArrived = onMessageArrived;
+				} catch(e){
+					console.log("Couldn´t make client. Bad or expired host/port/topic. "+e);
+				}
+			}
+			
+			function MQTTconnect(){
+				try {
+				
+					let options = {
+						"onSuccess":onConnect,
+						"onFailure":onConnectionLost
+					};
+					
+					if(SSL === true){
+						options.useSSL = true;
+						options.userName = userName;
+						options.password = userPass;
+					}
+					
+					client.connect(options);
+				} catch(e){
+					console.log("Bad Broker options or server saturated. "+e);
+				}
+			}
+			
+			function MQTTsend(msg, destination) {
+				if(connectionState == true){
+					message = new Paho.MQTT.Message(msg);
+					message.destinationName = destination;
+					client.send(message);
+				}
+				else{
+					console.log("Couldn´t send. Internal time out or incorrect clienting");
+				}
+           	}
+			
+			function onConnect() {
+					connectionState = true;
+					client.subscribe(subscribeTopic);
+					console.log("Subscribed!");
+					console.log("Sending key..");
+					MQTTsend("$con:" + target + " -" + usrKey, publishTopic);
+			}
+			
+			function onConnectionLost(e) {
+				connectionState = false;
+				console.log("Connection finished. " + e.errorMessage);
+				$("#webConsoleAutentification").show();
+				$("#webConsoleControl").hide();
+			}
+			
+			function onMessageArrived(message) {
+				receivedMessage = message.payloadString;
+				
+				if(isMessager == false){
+					clearTimeout(responseTimeout);
+					if(receivedMessage === "0"){
+						console.log("Logged succesfuly!");
+						$("#webConsoleAutentification").hide();
+						$("#webConsoleControl").show();
+						isMessager = true;
+					}
+					else if(receivedMessage === "204"){
+						client.disconnect();
+						sendConsoleMessage("Wrong key!");
+					}
+					else if(receivedMessage === "200"){
+						client.disconnect();
+						sendConsoleMessage("This user is banned");
+					}
+					else{
+						client.disconnect();
+						sendConsoleMessage("Server refused. Reason: " + receivedMessage);
+					}
+					console.log("onMessageArrived:"+receivedMessage);
+					receivedMessage = "";
+					readyToResend = true;
+				}
+				else{
+					showMessage(receivedMessage);
+				}
+			}
+			
+			
+			
+			function sendConsoleMessage(message){
+				if(warnings == true){
+					var consoleMessageInit = '<i class="material-icons">error_outline</i>&nbsp;';
+					
+					$("#consoleOutput").css("opacity","1");
+					$("#consoleOutput").html(consoleMessageInit + message);
+					setTimeout(function(){$("#consoleOutput").animate({opacity: "0"})},4000);
+				}
+			}
+			
+	</script>
+	
+	</body>
+</html>
