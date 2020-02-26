@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html><meta charset="UTF-8">
+    <head>
+		<script src="mqttws3.wCookies.js"></script>
+
+		<script>
+		/* This script is the server, manages inputs and outputs and sends/archives data to the app 
+		* Note1: take sendConsoleMessage() as description of what the server is doing
+		* Note2: for testing in webBrowser (not server App) comment all //window.AppInventor.~ lines and initialize appMsg with (example):
+		*		 '{"users":{"anon":{"accesDenied":true,"activeTarget":null,"isSU":false}},"serverRequests":{"host":"tailor.cloudmqtt.com","port":31345,"SSL":true,"usrName":"yziinyrs","usrPass":"cgAduprcUNln"},"serverTargets":{"host":"tailor.cloudmqtt.com","port":31345,"SSL":true,"usrName":"yziinyrs","usrPass":"cgAduprcUNln"},"targetsUncoded":["LED", "Messager", "Crane"],"targetsCoded":["LED", "Messager", "Crane"],"serverName":"server","targetsIDTopic":"targets","settersAndGetters":{"test1":"abcdefghij","test2":"<span style=color:red>Manana es tu ultimo dia.</span>"}}'
+		*/
+					
+			var appMsg;
+			var settings;
+			var settingsTimer;
+			
+			window.onload = function() {
+				buildSettings();
+			}
+			
+			function buildSettings(){
+				sendConsoleMessage("Building settings..");
+				window.AppInventor.setWebViewString("ready?");
+				
+				setTimeout(function(){
+					appMsg = window.AppInventor.getWebViewString();
+					
+					if(appMsg.includes('"users"')){
+						sendConsoleMessage("Evaluating response..");
+						try {
+							settings = JSON.parse(appMsg);
+							subscribeTopic_requests = settings.serverName + "/request";
+							publishTopic_requests = settings.serverName + "/response/";
+							publishTopic_targets = settings.targetsIDTopic + "/";
+							subscribeTopic_targets = settings.targetsIDTopic + "/message";
+							MQTTmake();
+							MQTTmakeTargets();
+							clearInterval(settingsTimer);
+							settingsTimer = setInterval(function(){manageConfigurations();},4000);
+							appMsg = "";
+						}catch(e){
+							sendConsoleMessage(e);
+							setTimeout(function(){ buildSettings(); }, 4000);
+						}
+					}else{
+						sendConsoleMessage("Build failed. Retrying..");
+						setTimeout(function(){ buildSettings(); }, 4000);
+					}
+					
+				}, 4000);
+			}
+			
+			function inputBreakdown(usrInput){
+				let firstChar = usrInput.charAt(0);
+				let posUser = usrInput.lastIndexOf("-");
+				let posTarget = usrInput.lastIndexOf(":");
+				let input = {
+						"type":null,
+						"name":null,
+						"target":null,
+						"command":null,
+						"msg":null
+					};
+					
+				input.name = usrInput.substring(posUser+1);
+
+				if(firstChar === "$"){
+					input.type = "cmd";
+					input.target = usrInput.substring(posTarget+1, posUser-1);
+					input.command = usrInput.substring(1, posTarget);					
+				}
+				else{
+					input.type = "msg";
+					input.msg = usrInput.substring(0, posUser-1);;
+				}
+				return input;
+			}
+			
+			function evaluateInputState(message){
+				sendConsoleMessage("------------------ NEW REQUEST -----------------------");
+				
+				let input = inputBreakdown(message.payloadString);	
+				let nameValidation = find(input.name, settings.users);
+				let responseDestination = publishTopic_requests + input.name;
+				
+				sendConsoleMessage("Message Arrived: "+message.payloadString + " From: " + subscribeTopic_requests);
+				sendConsoleMessage("processing input..");
+
+				if(nameValidation === 0){
+					sendConsoleMessage(input.name+" Wrong Name!");
+					MQTTsend("204", responseDestination);
+				}
+				else if( settings.users[input.name].accesDenied === true ){ 
+					sendConsoleMessage(input.name+" No permission!");
+					MQTTsend("200", responseDestination);
+				}
+				else if(input.type === "msg"){
+					evaluateMessage(input);
+				}
+				else if(input.type === "cmd"){
+					let targetValidation = find(input.target, settings.targetsUncoded);
+					let setGetValidation = find(input.target, settings.settersAndGetters);
+					let banAllowValidation = find(input.target, settings.users);
+					
+
+					if(input.command === "con" || input.command === "shut"){
+						if(targetValidation > 0){
+							sendConsoleMessage(input.target+" is valid");
+							evaluateCommand(input);
+						}
+						else{
+							sendConsoleMessage(input.target+" is not a valid target");
+							MQTTsend("404", responseDestination);
+						}
+					}
+					else if(input.command === "set" || input.command === "get" ){
+						if(setGetValidation  > 0){
+							sendConsoleMessage(input.target+" is valid.");
+							evaluateSetGet(input);
+						}
+						else{
+							sendConsoleMessage(input.target+" Wrong setter/getter");
+							MQTTsend("504", responseDestination);
+						}
+					}
+					else if(input.command === "ban" || input.command === "allow" ){
+						if(banAllowValidation  > 0){
+							sendConsoleMessage(input.target+" is valid.");
+							evaluateBanAllow(input);
+						}
+						else{
+							sendConsoleMessage(input.target+" Wrong banning/allowing user");
+							MQTTsend("220", responseDestination);
+						}
+					}
+					else{
+						sendConsoleMessage(input.target+" Command not found");
+						MQTTsend("302", responseDestination);
+					}
+				}
+			}
+
+			function evaluateCommand(input){
+				sendConsoleMessage("Received as command");
+				
+				var responseDestination = publishTopic_requests + input.name;
+									
+				settings.users[input.name].activeTarget = (input.command==="con")? input.target : null;
+				MQTTsend("0", responseDestination);
+				sendLogPackage(input);
+			}
+
+			function evaluateMessage(input){			
+				sendConsoleMessage("Received as message");
+				let destination;
+				
+				if( settings.users[input.name].activeTarget !== null){
+					destination = publishTopic_targets + encodeTarget(settings.users[input.name].activeTarget);
+					sendConsoleMessage("Destination: " + destination + " From: " + input.name);
+					MQTTsendTargets(input.msg, destination);
+					sendLogPackage(input);
+				}
+				else{
+					destination = publishTopic_requests + input.name;
+					sendConsoleMessage("No active target for " + input.name);
+					MQTTsend("420", destination)
+				}
+			}
+
+			function evaluateSetGet(input){
+				let destinationTargets = publishTopic_targets + encodeTarget(settings.users[input.name].activeTarget);
+				let destinationResponses = publishTopic_requests + input.name;
+				
+				sendConsoleMessage("Received as setter/getter");
+				
+				if(input.command === "get"){
+					MQTTsend(settings.settersAndGetters[input.target], destinationResponses);
+					sendLogPackage(input);
+				}
+				else if(settings.users[input.name].activeTarget === null){
+					sendConsoleMessage("No active target for " + input.name);
+					MQTTsend("420", destinationResponses);
+				}else {
+					MQTTsendTargets(settings.settersAndGetters[input.target], destinationTargets);
+					MQTTsend("0", destinationResponses);
+					sendLogPackage(input);
+				}
+			}
+			
+			function evaluateBanAllow(input){
+				var responseDestination = publishTopic_requests + input.name;
+
+				sendConsoleMessage("Received as ban/allow where input and users objects are: ");
+				sendConsoleMessage(input,settings.users);
+				
+				if(settings.users[input.name].isSU === true){
+					settings.users[input.target].accesDenied = (input.command==="ban")? true : false;
+					MQTTsend("0", responseDestination);
+					sendConsoleMessage("is" + input.target + " banned? " + settings.users[input.target].accesDenied);
+					sendLogPackage(input);
+				}
+				else{ 
+					sendConsoleMessage(input.name + " is not a SU");
+					MQTTsend("210", responseDestination);
+				}
+			}
+			
+			function encodeTarget(uncoded){
+				var coded=false;
+				var i;
+							
+				for(i=0; i<settings.targetsUncoded.length; i++){
+					if(uncoded === settings.targetsUncoded[i]){
+						coded = settings.targetsCoded[i];
+						break;
+					}
+				}
+				return coded;
+			}
+			
+			function find(name, inObject){
+				let inputType = typeof(inObject[0]);
+				let position = 0;
+				
+				if(inputType === "string"){
+					for(let i=0; i<inObject.length; i++){
+						if(inObject[i] === name){
+							position++;
+							break;
+						}
+					}
+				}
+				else{
+					if(typeof(inObject[name]) !== "undefined"){
+						position = 1;
+					}
+				}
+				return position;
+			}
+			
+			function sendLogPackage(input, targetDestination=null){
+				let logIinit = 'User ' + input.name;
+				let logOutput;
+				
+				if(input.type === "msg"){
+					if(targetDestination !== null){
+						logOutput = 'User ' + targetDestination + ' received message "' + input.msg + '" from ' + input.name;
+					}
+					else{
+						logOutput = logIinit + ' sent "' + input.msg + '" to ' + settings.users[input.name].activeTarget;
+					}
+				}
+				if(input.type === "cmd"){
+					switch (input.command){
+						case "con":
+							logOutput = logIinit + ' connected to ' + input.target;
+							break;
+						case "shut":
+							logOutput = logIinit + ' disconnected from ' + input.target;
+							break;
+						case "set":
+							 logOutput = logIinit + ' sent the value of "' + input.target + '" to ' + settings.users[input.name].activeTarget;
+							break;
+						case "get":
+							 logOutput = logIinit + ' received the value of "' + input.target + '"';
+							break;	
+						case "ban":
+							logOutput = logIinit + ' banned ' + input.target;
+							break;	
+						case "allow":
+							logOutput = logIinit + ' unbanned ' + input.target;
+							break;
+					}
+				}
+				window.AppInventor.setWebViewString(logOutput);
+				sendConsoleMessage("log Output: " + logOutput);
+			}
+			
+			function sendConsoleMessage(messageToPrint){
+				document.getElementById('consoleOutput').innerHTML = document.getElementById('consoleOutput').innerHTML + '<div>' + messageToPrint + '</div>';
+			}
+			
+			function manageConfigurations(){
+			
+				appMsg = window.AppInventor.getWebViewString();
+				window.AppInventor.setWebViewString("");
+
+				if(appMsg.substring(0,11) === 'INSTRUCTION'){
+					try{
+						let inputInstructions = appMsg.substring(12, appMsg.length);
+						let instructions = JSON.parse(inputInstructions);
+						
+						sendConsoleMessage("-> NEW " + appMsg);
+												
+						switch( instructions[0] ){
+							case "User add":
+								settings.users[instructions[1]] = {"accesDenied":false,"activeTarget":null,"isSU":instructions[2]};
+								break;
+							case "User delete":
+								delete settings.users[instructions[1]];
+								break;
+							case "Target add":
+								settings.targetsCoded[settings.targetsCoded.length + 1] = instructions[1];
+								settings.targetsUncoded[settings.targetsUncoded.length + 1] = instructions[1];
+								break;
+							case "Target delete":
+								let targetPosition = find(instructions[1], settings.targetsUncoded);
+								
+								if(targetPosition > 0){
+									delete settings.targetsUncoded[targetPosition-1];
+									delete settings.targetsCoded[targetPosition-1];
+								}
+								break;
+							case "User ban":
+								settings.users[instructions[1]].accesDenied = true;
+								break;
+							case "User allow":
+								settings.users[instructions[1]].accesDenied = false;
+								break;
+							case "Set settings":
+								settings = instructions[1];
+								break;
+							default:
+								sendConsoleMessage('&nbsp;&nbsp;No Action or Argument found. Syntax: "Action, Argument [, Argument]"');
+						}
+					}catch(e){
+							sendConsoleMessage("Could't set instructions. " + e);
+					}
+					window.AppInventor.setWebViewString(JSON.stringify(settings));
+				}
+				appMsg = "";
+			}
+		</script>
+		
+		
+		<script>	/* This Script implements the Paho MQTT base connections. Doesn´t need modifications */
+	
+			var connectionState=false;
+			var dualServer = true;
+			
+			var serverRequests;
+			var subscribeTopic_requests;
+			var publishTopic_requests;
+			var publishTopic_targets;
+			var subscribeTopic_targets;
+			var receivedMessage;
+						
+			function MQTTmake() {
+				try{
+					serverRequests = new Paho.MQTT.Client(settings.serverRequests.host, settings.serverRequests.port, subscribeTopic_requests);
+					serverRequests.onMessageArrived = evaluateInputState;
+					serverRequests.onConnectionLost = onConnectionLost;
+					
+					var options = {
+						"onSuccess":onConnect,
+						"onFailure":onConnectionLost
+					};
+					
+					if(settings.serverRequests.SSL === true){
+						options.useSSL = true;
+						options.userName = settings.serverRequests.usrName;
+						options.password = settings.serverRequests.usrPass;
+					}
+					
+					serverRequests.connect(options);
+					
+				} catch(e){
+					sendConsoleMessage("MQTTmake failed. Bad or expired host/port/topic. "+e);
+				}
+			}
+			
+			function MQTTsend(msg, destination) {
+				if(connectionState == true){
+					message = new Paho.MQTT.Message(msg);
+					message.destinationName = destination;
+					serverRequests.send(message);
+					sendConsoleMessage("Sent: " + msg + " to " + destination);
+				}
+				else{
+					sendConsoleMessage("MQTTsend responses failed due false connection state. Internal time out or incorrect clienting");
+				}
+           	}			
+			
+			function onConnect() {
+					connectionState = true;
+					serverRequests.subscribe(subscribeTopic_requests);
+					sendConsoleMessage("Requests Server Initialized");
+					sendConsoleMessage("&nbsp;&nbsp; Requests on: "+subscribeTopic_requests);
+					sendConsoleMessage("&nbsp;&nbsp; Responses on: "+publishTopic_requests + "<user requesting>");
+					window.AppInventor.setWebViewString("Connected!");
+			}
+			
+			function onConnectionLost() {
+				connectionState = false;
+				sendConsoleMessage("Requests server is Down. Restarting..");
+				buildSettings();
+			}
+			
+			
+			
+			//////For dualServing ///////////////////////
+			
+			function MQTTmakeTargets() {
+				try{
+					serverTargets = new Paho.MQTT.Client(settings.serverTargets.host, settings.serverTargets.port, publishTopic_targets + "Server31afS32f1Z51fv33Dip");
+					serverTargets.onMessageArrived = onMessageTargets;
+					serverTargets.onConnectionLost = onConnectionLostTargets;
+					
+					let options = {
+						"onSuccess":onConnectTargets,
+						"onFailure":onConnectionLostTargets
+					};
+					
+					if(settings.serverTargets.SSL === true){
+						options.useSSL = true;
+						options.userName = settings.serverTargets.usrName;
+						options.password = settings.serverTargets.usrPass;
+					}
+			
+					serverTargets.connect(options);
+					
+				} catch(e){
+					sendConsoleMessage("MQTTmakeTargets failed. Bad or expired host/port/topic. "+e);
+				}
+			}
+			
+			function MQTTsendTargets(msg, destination) {
+				try{
+					message = new Paho.MQTT.Message(msg);
+					message.destinationName = destination;
+					serverTargets.send(message);
+					sendConsoleMessage("Sent: " + msg + " to " + destination);
+				}catch(e){
+					sendConsoleMessage("MQTTsend Target failed. "+e);
+				}
+           	}
+			
+			function onMessageTargets(msg){
+				let targetMessage = msg.payloadString;
+				let input = inputBreakdown(targetMessage);
+				let usersCOnnected;
+				
+				for(user in settings.users){
+					if(settings.users[user].activeTarget === input.name){
+						MQTTsend(input.msg, publishTopic_requests + user);
+						sendLogPackage(input, user);
+						usersCOnnected++;
+					}
+				}
+				sendConsoleMessage("-> NEW TARGET MESSAGE:");
+				sendConsoleMessage('&nbsp;&nbsp; message "' + targetMessage + '" was sent to ' + usersCOnnected + ' users');
+			}
+			function onConnectTargets(){
+				sendConsoleMessage("Targets Server Initialized");
+				sendConsoleMessage("&nbsp;&nbsp; Listening Projects from: "+subscribeTopic_targets);
+				sendConsoleMessage("&nbsp;&nbsp; Messaging projects from: "+publishTopic_targets + "<intern project ID>");
+				serverTargets.subscribe(subscribeTopic_targets);
+			}
+			function onConnectionLostTargets(){
+				sendConsoleMessage("Targets server is down!");
+			}
+		</script>
+	</head>
+	<body>
+		<div id="consoleOutput"></div>
+	</body>
+</html>
