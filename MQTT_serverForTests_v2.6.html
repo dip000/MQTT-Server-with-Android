@@ -6,11 +6,12 @@
 		<script>
 		/* This script is the server, manages inputs and outputs and sends/archives data to the app 
 		* Note1: take sendConsoleMessage() as description of what the server is doing
-		* Note2: for testing in webBrowser (not server App) comment all //window.AppInventor.~ lines and initialize appMsg with (example):
-		*		 '{"users":{"anon":{"accesDenied":true,"activeTarget":null,"isSU":false}},"serverRequests":{"host":"tailor.cloudmqtt.com","port":31345,"SSL":true,"usrName":"yziinyrs","usrPass":"cgAduprcUNln"},"serverTargets":{"host":"tailor.cloudmqtt.com","port":31345,"SSL":true,"usrName":"yziinyrs","usrPass":"cgAduprcUNln"},"targetsUncoded":["LED", "Messager", "Crane"],"targetsCoded":["LED", "Messager", "Crane"],"serverName":"server","targetsIDTopic":"targets","settersAndGetters":{"test1":"abcdefghij","test2":"<span style=color:red>Manana es tu ultimo dia.</span>"}}'
-		*/
-					
-			var appMsg = '{"users":{"anon":{"accesDenied":true,"activeTarget":null,"isSU":false}},"serverRequests":{"host":"tailor.cloudmqtt.com","port":31345,"SSL":true,"usrName":"yziinyrs","usrPass":"cgAduprcUNln"},"serverTargets":{"host":"tailor.cloudmqtt.com","port":31345,"SSL":true,"usrName":"yziinyrs","usrPass":"cgAduprcUNln"},"targetsUncoded":["LED", "Messager", "Crane"],"targetsCoded":["LED", "Messager", "Crane"],"serverName":"server","targetsIDTopic":"targets","settersAndGetters":{"test1":"abcdefghij","test2":"<span style=color:red>Manana es tu ultimo dia.</span>"}}';
+		* Note2: for testing in webBrowser (not server App) comment all "window.AppInventor.~" and "appMsg=window.AppInventor.~" lines and initialize appMsg with (example):
+			var appMsg = '{"users":{"anon":{"accesDenied":false,"activeTarget":null,"isSU":false,"isStatic":false},"admin":{"accesDenied":false,"activeTarget":null,"isSU":true,"isStatic":false},"LED":{"accesDenied":false,"activeTarget":null,"isSU":false,"isStatic":true}},"serverRequests":{"host":"tailor.cloudmqtt.com","port":31345,"SSL":true,"usrName":"yziinyrs","usrPass":"cgAduprcUNln"},"serverTargets":{"host":"broker.hivemq.com","port":8000,"SSL":false,"usrName":"yziinyrs","usrPass":"cgAduprcUNln"},"serverName":"server","targetsIDTopic":"static/users","settersAndGetters":{"sayHi":"Hello World","numbers":["one","two"],"colors":{"red":"<span style=color:red>Red</span>","green":"<span style=color:green>Green</span>"}}}';
+			|
+			|
+			V
+		*/	var appMsg = '{"users":{"anon":{"accesDenied":false,"activeTarget":null,"isSU":false,"isStatic":false},"admin":{"accesDenied":false,"activeTarget":null,"isSU":true,"isStatic":false},"LED":{"accesDenied":false,"activeTarget":"Messager","isSU":false,"isStatic":true},"Messager":{"accesDenied":false,"activeTarget":"Messager","isSU":false,"isStatic":true}},"serverRequests":{"host":"tailor.cloudmqtt.com","port":31345,"SSL":true,"usrName":"yziinyrs","usrPass":"cgAduprcUNln"},"serverTargets":{"host":"broker.hivemq.com","port":8000,"SSL":false,"usrName":"yziinyrs","usrPass":"cgAduprcUNln"},"serverName":"server","targetsIDTopic":"static/users","settersAndGetters":{"sayHi":"Hello World","numbers":["one","two"],"colors":{"red":"<span style=color:red>Red</span>","green":"<span style=color:green>Green</span>"}}}';
 			var settings;
 			var settingsTimer;
 			
@@ -53,7 +54,7 @@
 			function inputBreakdown(usrInput){
 				let firstChar = usrInput.charAt(0);
 				let posUser = usrInput.lastIndexOf("-");
-				let posTarget = usrInput.lastIndexOf(":");
+				let posTarget = usrInput.indexOf(":");
 				let input = {
 						"type":null,
 						"name":null,
@@ -77,72 +78,112 @@
 			}
 			
 			function evaluateInputState(message){
-				sendConsoleMessage("------------------ NEW REQUEST -----------------------");
 				
-				let input = inputBreakdown(message.payloadString);	
-				let nameValidation = find(input.name, settings.users);
+				let input = inputBreakdown(message.payloadString);				
 				let responseDestination = publishTopic_requests + input.name;
 				
-				sendConsoleMessage("Message Arrived: "+message.payloadString + " From: " + subscribeTopic_requests);
-				sendConsoleMessage("processing input..");
+				let nameValidation = input.name in settings.users;
+				let validations;
 
-				if(nameValidation === 0){
-					sendConsoleMessage(input.name+" Wrong Name!");
-					MQTTsend("204", responseDestination);
+
+				sendConsoleMessage("------------------ NEW INPUT -----------------------");
+				sendConsoleMessage("Message: "+message.payloadString + " From: " + subscribeTopic_requests);
+
+				if(nameValidation === false){
+					MQTTsend("204", responseDestination, input.name+" is not registered");
 				}
-				else if( settings.users[input.name].accesDenied === true ){ 
-					sendConsoleMessage(input.name+" No permission!");
-					MQTTsend("200", responseDestination);
+				else if(settings.users[input.name].accesDenied === true ){
+					MQTTsend("200", responseDestination, input.name+" is banned");
 				}
 				else if(input.type === "msg"){
-					evaluateMessage(input);
+					validations ={SUpermission:false, userTarget:false, activeTarget:true};
+					checkAditionalValidations(validations, input, evaluateMessage);
 				}
-				else if(input.type === "cmd"){
-					let targetValidation = find(input.target, settings.targetsUncoded);
-					let setGetValidation = find(input.target, settings.settersAndGetters);
-					let banAllowValidation = find(input.target, settings.users);
+				else if(input.type === "cmd"){					
+					switch(input.command){
 					
-
-					if(input.command === "con" || input.command === "shut"){
-						if(targetValidation > 0){
-							sendConsoleMessage(input.target+" is valid");
-							evaluateCommand(input);
-						}
-						else{
-							sendConsoleMessage(input.target+" is not a valid target");
-							MQTTsend("404", responseDestination);
-						}
-					}
-					else if(input.command === "set" || input.command === "get" ){
-						if(setGetValidation  > 0){
-							sendConsoleMessage(input.target+" is valid.");
-							evaluateSetGet(input);
-						}
-						else{
-							sendConsoleMessage(input.target+" Wrong setter/getter");
-							MQTTsend("504", responseDestination);
-						}
-					}
-					else if(input.command === "ban" || input.command === "allow" ){
-						if(banAllowValidation  > 0){
-							sendConsoleMessage(input.target+" is valid.");
-							evaluateBanAllow(input);
-						}
-						else{
-							sendConsoleMessage(input.target+" Wrong banning/allowing user");
-							MQTTsend("220", responseDestination);
-						}
-					}
-					else{
-						sendConsoleMessage(input.target+" Command not found");
-						MQTTsend("302", responseDestination);
+					case "con":
+					case "shut":
+						validations ={SUpermission:false, userTarget:true, activeTarget:false};
+						checkAditionalValidations(validations, input, evaluateConnections);
+						break;
+						
+					case "send":
+						validations ={SUpermission:false, userTarget:false, activeTarget:true};
+						checkAditionalValidations(validations, input, evaluateSendGet);
+						break;
+					
+					case "get":
+						evaluateSendGet(input);
+						break;
+						
+					case "save":
+					case "erase":
+						validations ={SUpermission:true, userTarget:false, activeTarget:false};
+						checkAditionalValidations(validations, input, evaluateSaveErase);
+						break;
+						
+					case "ban":
+					case "allow":	
+						validations ={SUpermission:true, userTarget:true, activeTarget:false};
+						checkAditionalValidations(validations, input, evaluateBanAllow);
+						break;
+						
+					case "add":
+						validations ={SUpermission:true, userTarget:false, activeTarget:false};
+						checkAditionalValidations(validations, input, evaluateAddDel);
+						break;
+						
+					case "del":
+						validations ={SUpermission:true, userTarget:true, activeTarget:false};
+						checkAditionalValidations(validations, input, evaluateAddDel);
+						break;
+						
+					case "static":
+					case "regular":
+						validations ={SUpermission:true, userTarget:true, activeTarget:false};
+						checkAditionalValidations(validations, input, evaluateStatic);
+						break;
+						
+					default:
+						MQTTsend("304", responseDestination, input.command+" Command not found");
 					}
 				}
 			}
-
-			function evaluateCommand(input){
-				sendConsoleMessage("Received as command");
+			
+			function checkAditionalValidations(aditionalValidations, input, evaluateFunction){
+				let i=0;
+				let validations = [
+					settings.users[input.name].isSU,
+					input.target in settings.users,
+					settings.users[input.name].activeTarget===null? false : true
+				];
+					
+				let result = true;
 				
+				let errors = {
+					SUpermission:{code:"210", message:input.name + " is not a SU"},
+					userTarget:{code:"404", message:input.target + " not found"},
+					activeTarget:{code:"420", message:input.name + " has no active target"}
+				}
+				
+				for(validationName in aditionalValidations){
+					if(aditionalValidations[validationName] === true){
+						if(validations[i] === false){
+							result &= false;
+							MQTTsend(errors[validationName].code, publishTopic_requests + input.name, errors[validationName].message);
+							break;
+						}
+					}
+					i++;
+				}
+				
+				if(result === true){
+					evaluateFunction(input);
+				}
+			}
+
+			function evaluateConnections(input){				
 				var responseDestination = publishTopic_requests + input.name;
 									
 				settings.users[input.name].activeTarget = (input.command==="con")? input.target : null;
@@ -151,92 +192,106 @@
 			}
 
 			function evaluateMessage(input){			
-				sendConsoleMessage("Received as message");
 				let destination;
+				let activeTarget = settings.users[input.name].activeTarget;
+				let isStatic = settings.users[activeTarget].isStatic;
 				
-				if( settings.users[input.name].activeTarget !== null){
-					destination = publishTopic_targets + encodeTarget(settings.users[input.name].activeTarget);
-					sendConsoleMessage("Destination: " + destination + " From: " + input.name);
-					MQTTsendTargets(input.msg, destination);
-					sendLogPackage(input);
-				}
-				else{
-					destination = publishTopic_requests + input.name;
-					sendConsoleMessage("No active target for " + input.name);
-					MQTTsend("420", destination)
-				}
+				destination = (isStatic===true)? publishTopic_targets : publishTopic_requests;
+				destination += activeTarget;
+				
+				MQTTsend(input.msg, destination, "Destination: " + destination + " From: " + input.name);
+				sendLogPackage(input);
 			}
 
-			function evaluateSetGet(input){
-				let destinationTargets = publishTopic_targets + encodeTarget(settings.users[input.name].activeTarget);
+			function evaluateSendGet(input){
 				let destinationResponses = publishTopic_requests + input.name;
-				
-				sendConsoleMessage("Received as setter/getter");
-				
-				if(input.command === "get"){
-					MQTTsend(settings.settersAndGetters[input.target], destinationResponses);
-					sendLogPackage(input);
+				let valueStored;
+							
+				try{
+					valueStored = eval("settings.settersAndGetters." + input.target);
+					
+					if(input.command === "get"){
+						MQTTsend(JSON.stringify(valueStored), destinationResponses);
+						sendLogPackage(input);
+					}
+					else{
+						let activeTarget = settings.users[input.name].activeTarget;
+						let isStatic = settings.users[activeTarget].isStatic;
+						let destinationMessage = isStatic? publishTopic_targets : publishTopic_requests;
+						
+						destinationMessage += activeTarget;
+						MQTTsend(JSON.stringify(valueStored), destinationMessage);
+						MQTTsend("0", destinationResponses);
+						sendLogPackage(input);
+					}
 				}
-				else if(settings.users[input.name].activeTarget === null){
-					sendConsoleMessage("No active target for " + input.name);
-					MQTTsend("420", destinationResponses);
-				}else {
-					MQTTsendTargets(settings.settersAndGetters[input.target], destinationTargets);
+				catch{
+					MQTTsend("590", destinationResponses);
+				}
+			}
+			
+			function evaluateSaveErase(input){
+				let destinationResponses = publishTopic_requests + input.name;
+								
+				if(input.command === "save"){
+					try{
+						let key = input.target.substring(0,input.target.indexOf(":"));
+						let value = input.target.substring(input.target.indexOf(":")+1, input.target.length);
+						eval("settings.settersAndGetters." + key + "=" + value + ";");
+						
+						MQTTsend("0", destinationResponses);
+					} catch {
+						MQTTsend("690", destinationResponses);
+					}
+				}
+				else if(input.command === "erase"){
+					delete settings.settersAndGetters[input.target];
 					MQTTsend("0", destinationResponses);
-					sendLogPackage(input);
 				}
 			}
 			
 			function evaluateBanAllow(input){
 				var responseDestination = publishTopic_requests + input.name;
-
-				sendConsoleMessage("Received as ban/allow where input and users objects are: ");
-				sendConsoleMessage(input,settings.users);
 				
-				if(settings.users[input.name].isSU === true){
-					settings.users[input.target].accesDenied = (input.command==="ban")? true : false;
-					MQTTsend("0", responseDestination);
-					sendConsoleMessage("is" + input.target + " banned? " + settings.users[input.target].accesDenied);
-					sendLogPackage(input);
-				}
-				else{ 
-					sendConsoleMessage(input.name + " is not a SU");
-					MQTTsend("210", responseDestination);
-				}
+				settings.users[input.target].accesDenied = (input.command==="ban")? true : false;
+				MQTTsend("0", responseDestination);
+				sendLogPackage(input);
 			}
 			
-			function encodeTarget(uncoded){
-				var coded=false;
-				var i;
-							
-				for(i=0; i<settings.targetsUncoded.length; i++){
-					if(uncoded === settings.targetsUncoded[i]){
-						coded = settings.targetsCoded[i];
-						break;
+			function evaluateAddDel(input){
+				let responseDestination = publishTopic_requests + input.name;
+
+					if(input.command === "add"){
+						settings.users[input.target] = {"accesDenied":false,"activeTarget":null,"isSU":false,"isStatic":false};
+						MQTTsend("0", responseDestination);
+						sendLogPackage(input);
 					}
-				}
-				return coded;
+					else{
+						delete settings.users[input.target];
+						MQTTsend("0", responseDestination);
+					}
 			}
 			
-			function find(name, inObject){
-				let inputType = typeof(inObject[0]);
+			function evaluateStatic(input){
+				let responseDestination = publishTopic_requests + input.name;
+
+				settings.users[input.target].isStatic = (input.command === "static")? true : false;
+				MQTTsend("0", responseDestination);
+				sendLogPackage(input);
+			}
+			
+/*			function find(name, inObject){
 				let position = 0;
 				
-				if(inputType === "string"){
-					for(let i=0; i<inObject.length; i++){
-						if(inObject[i] === name){
-							position++;
-							break;
-						}
-					}
-				}
-				else{
-					if(typeof(inObject[name]) !== "undefined"){
-						position = 1;
+				for(let i=0; i<inObject.length; i++){
+					if(inObject[i] === name){
+						position++;
+						break;
 					}
 				}
 				return position;
 			}
+*/
 			
 			function sendLogPackage(input, targetDestination=null){
 				let logIinit = 'User ' + input.name;
@@ -258,7 +313,7 @@
 						case "shut":
 							logOutput = logIinit + ' disconnected from ' + input.target;
 							break;
-						case "set":
+						case "send":
 							 logOutput = logIinit + ' sent the value of "' + input.target + '" to ' + settings.users[input.name].activeTarget;
 							break;
 						case "get":
@@ -270,6 +325,12 @@
 						case "allow":
 							logOutput = logIinit + ' unbanned ' + input.target;
 							break;
+						case "add":
+							logOutput = logIinit + ' added ' + input.target;
+							break;
+						case "del":
+							logOutput = logIinit + ' deleted ' + input.target;
+							break;
 					}
 				}
 				//window.AppInventor.setWebViewString(logOutput);
@@ -278,6 +339,7 @@
 			
 			function sendConsoleMessage(messageToPrint){
 				document.getElementById('consoleOutput').innerHTML = document.getElementById('consoleOutput').innerHTML + '<div>' + messageToPrint + '</div>';
+				document.documentElement.scrollTop = document.documentElement.scrollHeight;
 			}
 			
 			function manageConfigurations(){
@@ -287,44 +349,12 @@
 
 				if(appMsg.substring(0,11) === 'INSTRUCTION'){
 					try{
-						let inputInstructions = appMsg.substring(12, appMsg.length);
-						let instructions = JSON.parse(inputInstructions);
+						let inputInstruction = appMsg.substring(12, appMsg.length);
 						
-						sendConsoleMessage("-> NEW " + appMsg);
-												
-						switch( instructions[0] ){
-							case "User add":
-								settings.users[instructions[1]] = {"accesDenied":false,"activeTarget":null,"isSU":instructions[2]};
-								break;
-							case "User delete":
-								delete settings.users[instructions[1]];
-								break;
-							case "Target add":
-								settings.targetsCoded[settings.targetsCoded.length + 1] = instructions[1];
-								settings.targetsUncoded[settings.targetsUncoded.length + 1] = instructions[1];
-								break;
-							case "Target delete":
-								let targetPosition = find(instructions[1], settings.targetsUncoded);
-								
-								if(targetPosition > 0){
-									delete settings.targetsUncoded[targetPosition-1];
-									delete settings.targetsCoded[targetPosition-1];
-								}
-								break;
-							case "User ban":
-								settings.users[instructions[1]].accesDenied = true;
-								break;
-							case "User allow":
-								settings.users[instructions[1]].accesDenied = false;
-								break;
-							case "Set settings":
-								settings = instructions[1];
-								break;
-							default:
-								sendConsoleMessage('&nbsp;&nbsp;No Action or Argument found. Syntax: "Action, Argument [, Argument]"');
-						}
+						evaluateInputState({"payloadString":inputInstruction});
+						
 					}catch(e){
-							sendConsoleMessage("Could't set instructions. " + e);
+							sendConsoleMessage("Could't send instructions. " + e);
 					}
 					//window.AppInventor.setWebViewString(JSON.stringify(settings));
 				}
@@ -333,7 +363,7 @@
 		</script>
 		
 		
-		<script>	/* This Script implements the Paho MQTT base connections. Doesn´t need modifications */
+		<script>	/* This Script implements the Paho MQTT base connections. DoesnÂ´t need modifications */
 	
 			var connectionState=false;
 			var dualServer = true;
@@ -374,6 +404,7 @@
 					message = new Paho.MQTT.Message(msg);
 					message.destinationName = destination;
 					serverRequests.send(message);
+					
 					sendConsoleMessage("Sent: " + msg + " to " + destination);
 				}
 				else{
@@ -386,7 +417,7 @@
 					serverRequests.subscribe(subscribeTopic_requests);
 					sendConsoleMessage("Requests Server Initialized");
 					sendConsoleMessage("&nbsp;&nbsp; Requests on: "+subscribeTopic_requests);
-					sendConsoleMessage("&nbsp;&nbsp; Responses on: "+publishTopic_requests + "<user requesting>");
+					sendConsoleMessage("&nbsp;&nbsp; Responses on: "+publishTopic_requests + "[user requesting]");
 					//window.AppInventor.setWebViewString("Connected!");
 			}
 			
@@ -438,8 +469,9 @@
 			function onMessageTargets(msg){
 				let targetMessage = msg.payloadString;
 				let input = inputBreakdown(targetMessage);
-				let usersCOnnected;
+				let usersCOnnected = 0;
 				
+				sendConsoleMessage("-> NEW TARGET MESSAGE:");
 				for(user in settings.users){
 					if(settings.users[user].activeTarget === input.name){
 						MQTTsend(input.msg, publishTopic_requests + user);
@@ -447,13 +479,12 @@
 						usersCOnnected++;
 					}
 				}
-				sendConsoleMessage("-> NEW TARGET MESSAGE:");
 				sendConsoleMessage('&nbsp;&nbsp; message "' + targetMessage + '" was sent to ' + usersCOnnected + ' users');
 			}
 			function onConnectTargets(){
-				sendConsoleMessage("Targets Server Initialized");
-				sendConsoleMessage("&nbsp;&nbsp; Listening Projects from: "+subscribeTopic_targets);
-				sendConsoleMessage("&nbsp;&nbsp; Messaging projects from: "+publishTopic_targets + "<intern project ID>");
+				sendConsoleMessage("Static users' server Initialized");
+				sendConsoleMessage("&nbsp;&nbsp; Listening Static users from: "+subscribeTopic_targets);
+				sendConsoleMessage("&nbsp;&nbsp; Messaging Static users from: "+publishTopic_targets + "[static user requesting]");
 				serverTargets.subscribe(subscribeTopic_targets);
 			}
 			function onConnectionLostTargets(){
