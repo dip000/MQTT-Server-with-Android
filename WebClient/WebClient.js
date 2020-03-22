@@ -1,6 +1,7 @@
+	/*projects here*/
 			var target=null;
 	
-			const project_LED = '<i id="actionImg" class="material-icons" onclick="toggleLED()">toggle_off</i>';
+			const project_LED = '<center><i id="actionImg" class="material-icons" onclick="toggleLED()">toggle_off</i></center>';
 			var LEDon = false;
 
 			const project_Messager = '<div id="webConsoleMessageBox"> </div> <div id="webConsoleMessageInput"><input type="text"></input><i onclick="MessagerSend();" class="material-icons">send</i></div><div id="webConsoleMessageButtons"><i class="material-icons"><span onclick="messageButtons(0);">person_add</span> <span onclick="messageButtons(1);">person_outline</span><span onclick="messageButtons(2);">cloud_upload</span><span onclick="messageButtons(3);">cloud_download</span><span onclick="messageButtons(4);">call</span><span onclick="messageButtons(5);">call_end</span><span onclick="messageButtons(6);">mail</span></i></div>';
@@ -18,7 +19,7 @@
 				else{
 					MQTTsend("LEDoff -" + usrKey,publishTopic);
 					$("#actionImg").text("toggle_off");
-					$("#actionImg").css("color","firebrick");
+					$("#actionImg").css("color","white");
 					LEDon = false;
 				}
 			}
@@ -72,10 +73,6 @@
 			const publishTopic = serverName + "/request";
 			var receivedMessage = "";
 			
-			window.onload = function(){
-				MQTTmake();
-				$("#webConsole").css("display","block");
-			}
 			
 			function targetClick(targetName){
 				switch(targetName){
@@ -123,7 +120,7 @@
 
 			function MQTTmake() {
 				try{
-					client = new Paho.MQTT.Client(host, port, "Client1D31gR5d3Dip" + Math.random());
+					client = new Paho.MQTT.Client(host, port, "Client3Dip-" + Math.floor(Math.random() * 100));
 					client.onConnectionLost = onConnectionLost;
 					client.onMessageArrived = onMessageArrived;
 				} catch(e){
