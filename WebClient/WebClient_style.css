@@ -1,8 +1,9 @@
 		#webConsole{
 			display:none;
 			position: relative;
-			width:185px;
 			height:auto;
+			margin:auto;
+			width:200px;
 		}
 
 			#webConsoleTitle span{
@@ -12,19 +13,12 @@
 				font-size:15px;
 			}
 
-		#btnHideWarn{
-			position:absolute;
-			right:5px;
-			top: 5px;
-		}
-
 		#webConsoleContent{
-			background-color: rgba(0,200,20,0.2);
-			border: 1px solid rgba(0,200,20,0.3);
+			background-color: rgba(30,30,30,0.8);
 			box-shadow: 0 0 10px 0 rgba(0,200,20,0.2);
-			border-radius: 8px;
+			border-radius: 5px;
 			padding:3px;
-			width:180px;
+			width:200px;
 		}
 		
 		#webConsoleControl{
@@ -32,8 +26,10 @@
 		}
 		
 		#consoleOutput{
-			color: firebrick;
+			color: white;
 			font-size:15px;
+			margin:3px;
+			width:170px;
 			opacity:0;
 		}
 			#consoleOutput i{
@@ -49,19 +45,30 @@
 		#webConsoleAutentification{
 			display:none;
 		}
+			#webConsoleAutentification input{
+				padding: 5px;
+				width:190px;
+			}
 		
 			#webConsoleProjectList div{
 				color:#1f1f1f;
 				margin:3px;
-				padding-left:6px;
-				background-color: rgba(0,25,180,0.2);
-				box-shadow: 0px 0px 10px 5px rgba(0,0,0,0.1);
-				border-left:5px solid rgba(0,180,25,0.5);
+				padding:8px;
+				background-color: white;
 				cursor:pointer;
+				border-radius:5px;
 			}
 			#webConsoleProjectList div:hover{
-				background-color: rgba(0,25,180,0.4);
-				color: #e5e5e5;
+				background-color: rgba(10,180,25,1);
+				color: #e0e0e0;
+			}
+			.webConsole-Title{
+				font-size:17px;
+				color: #f0f0f0;
+				text-align: center;
+				display:block;
+				width:190px;
+				margin-bottom: 20px;
 			}
 		
 		
@@ -72,7 +79,7 @@
 		}
 			#webConsoleMessageBox div{
 				padding:3px; margin:5px;
-				background:rgba(255,255,255,0.2);;
+				background: white;
 				font-size:14px;
 				width:80%;
 				margin-right:15%;
@@ -82,15 +89,33 @@
 				color:firebrick;
 				display:block;
 			}
+			
+			#webConsoleMessageInput{
+				margin:auto;
+				width:190px;
+			}
 			#webConsoleMessageInput i{
-				color: rgba(0,25,180,0.4);
+				color: white;
 				display:inline-block;
 				cursor:pointer;
 				margin-left:4px;
 			}
 			#webConsoleMessageInput input{
 				border-radius:20px;
+				width: 150px;
+				padding: 4px;
 			}
 			#webConsoleMessageInput i:hover{
-				color: rgba(0,25,180,0.7);
+				color: #e0e0e0;
 			}
+			
+			#webConsoleMessageButtons{
+				
+			}
+			#webConsoleMessageButtons span{
+				margin:5px;
+				color: white;
+				cursor:pointer;
+				float:left;
+			}
+		
