@@ -1,5 +1,5 @@
 		#webConsole{
-			display:none;
+			display:block;
 			position: relative;
 			height:auto;
 			margin:auto;
@@ -39,7 +39,7 @@
 		#actionImg{
 			cursor:pointer;
 			user-select:none;
-			color:firebrick;
+			color:white;
 			font-size:100px;
 		}
 		#webConsoleAutentification{
@@ -118,4 +118,3 @@
 				cursor:pointer;
 				float:left;
 			}
-		
